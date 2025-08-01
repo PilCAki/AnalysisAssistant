@@ -13,6 +13,13 @@ from pathlib import Path
 
 def launch_streamlit():
     """Launch the Streamlit application."""
+    # Check if Streamlit is available (try import first, then shutil.which)
+    try:
+        import streamlit
+    except ImportError:
+        print("❌ Streamlit is not installed. Run `pip install streamlit`.")
+        sys.exit(1)
+    
     try:
         # Get the path to the Streamlit app
         package_dir = Path(__file__).parent
@@ -23,7 +30,7 @@ def launch_streamlit():
         subprocess.run(cmd, check=True)
         
     except FileNotFoundError:
-        print("Error: Streamlit not found. Please install with: pip install streamlit")
+        print("❌ Streamlit command not found. Run `pip install streamlit`.")
         sys.exit(1)
     except subprocess.CalledProcessError as e:
         print(f"Error launching Streamlit: {e}")
@@ -58,9 +65,14 @@ def main():
         description="AnalysisAssistant - AI-powered data analysis tool"
     )
     
+    # Add the --launch flag as requested in the issue
+    parser.add_argument(
+        "--launch", action="store_true", help="Launch the Streamlit UI"
+    )
+    
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
-    # Launch command
+    # Launch command (keep existing subcommand for backward compatibility)
     launch_parser = subparsers.add_parser("launch", help="Launch the Streamlit UI")
     
     # Project management commands
@@ -75,7 +87,10 @@ def main():
     # Parse arguments
     args = parser.parse_args()
     
-    if args.command == "launch":
+    # Check for --launch flag first (as requested in the issue)
+    if args.launch:
+        launch_streamlit()
+    elif args.command == "launch":
         launch_streamlit()
     elif args.command == "project":
         if args.project_action == "create":

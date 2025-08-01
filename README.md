@@ -37,7 +37,7 @@ A local LLM-powered data analysis assistant that provides an interactive chat in
    streamlit run data_analysis_assistant/ui/app_streamlit.py
    ```
 
-   Or use the CLI command (when implemented):
+   Or use the CLI command:
    ```bash
    data-assist --launch
    ```
