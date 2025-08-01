@@ -37,26 +37,86 @@ def launch_streamlit():
         sys.exit(1)
 
 
-def create_project(project_name: str):
+def create_project(project_name: str, dataset_path: str = None):
     """
     Create a new analysis project.
     
-    TODO: Implement project creation logic
+    Args:
+        project_name: Name of the project to create
+        dataset_path: Optional path to initial dataset file
     """
-    print(f"Creating project: {project_name}")
-    # TODO: Use PersistenceManager to create project structure
-    pass
+    from .agent_core.persistence import PersistenceManager
+    
+    try:
+        persistence = PersistenceManager()
+        
+        print(f"Creating project: {project_name}")
+        
+        # Initialize the project
+        result = persistence.create_project(project_name, dataset_path)
+        
+        print(f"✅ Project '{result['project_name']}' created successfully!")
+        print(f"   Location: {result['project_path']}")
+        
+        if result.get("dataset"):
+            print(f"   Dataset: {result['dataset']['filename']} ({result['dataset']['size_bytes']} bytes)")
+        
+        if result.get("existing_conventions"):
+            print(f"   Found existing conventions: {result['conventions_summary']}")
+        
+        print("\nProject structure:")
+        for dir_name, dir_path in result["directories"].items():
+            print(f"   📁 {dir_name}/")
+        
+        print("\nInitial files:")
+        for file_name, file_path in result["files"].items():
+            if file_path:  # Only show files that were created
+                print(f"   📄 {Path(file_path).name}")
+        
+    except ValueError as e:
+        print(f"❌ Error creating project: {e}")
+        return 1
+    except FileNotFoundError as e:
+        print(f"❌ Dataset file error: {e}")
+        return 1
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return 1
+    
+    return 0
 
 
 def list_projects():
     """
     List all available projects.
-    
-    TODO: Implement project listing
     """
-    print("Available projects:")
-    # TODO: Use PersistenceManager to list projects
-    pass
+    from .agent_core.persistence import PersistenceManager
+    
+    try:
+        persistence = PersistenceManager()
+        projects = persistence.list_projects()
+        
+        if not projects:
+            print("No projects found.")
+            print("Create a new project with: data-assist project create <project_name>")
+            return 0
+        
+        print(f"Found {len(projects)} project(s):")
+        print()
+        
+        for project in projects:
+            print(f"📁 {project['name']}")
+            if project.get('created'):
+                print(f"   Created: {project['created']}")
+            print(f"   Path: {project['path']}")
+            print(f"   Data files: {project.get('data_files', 0)}")
+            print()
+        
+    except Exception as e:
+        print(f"❌ Error listing projects: {e}")
+        return 1
+    
+    return 0
 
 
 def main():
@@ -81,6 +141,10 @@ def main():
     
     create_parser = project_subparsers.add_parser("create", help="Create a new project")
     create_parser.add_argument("name", help="Project name")
+    create_parser.add_argument(
+        "--dataset", "-d", 
+        help="Path to initial dataset file (CSV, XLSX, etc.)"
+    )
     
     list_parser = project_subparsers.add_parser("list", help="List all projects")
     
@@ -94,9 +158,11 @@ def main():
         launch_streamlit()
     elif args.command == "project":
         if args.project_action == "create":
-            create_project(args.name)
+            exit_code = create_project(args.name, args.dataset)
+            sys.exit(exit_code)
         elif args.project_action == "list":
-            list_projects()
+            exit_code = list_projects()
+            sys.exit(exit_code)
         else:
             project_parser.print_help()
     else:
