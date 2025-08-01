@@ -1,8 +1,21 @@
 """
-Core agent functionality for the AnalysisAssistant.
+Agent core module - Core analysis and LLM functionality.
 
-This module contains the main components for LLM interaction,
-code execution, conversation management, and analysis orchestration.
+Provides the main analysis engine, LLM interface, and data management
+components for the Analysis Assistant.
 """
 
-# TODO: Add core agent imports and initialization
+from .engine import AnalysisEngine, LLMInterface
+from .models import AssistantResponse, LLMConfig, LLMLogEntry
+from .persistence import PersistenceManager
+from .summary_generator import SessionSummarizer
+
+__all__ = [
+    'AnalysisEngine',
+    'LLMInterface', 
+    'AssistantResponse',
+    'LLMConfig',
+    'LLMLogEntry',
+    'PersistenceManager',
+    'SessionSummarizer'
+]
