@@ -187,10 +187,17 @@ projects/*/history/*
 projects/*/*.jsonl
 projects/*/llm_log_*.jsonl
 
+# Test projects (exclude from version control)
+projects/my_first_analysis_project/
+projects/sales_analysis/
+projects/test_project/
+projects/conventions_test_project/
+
 # Temporary files
 *.tmp
 temp/
 tmp/
+sample_data.csv
 
 # OS generated files
 .DS_Store
