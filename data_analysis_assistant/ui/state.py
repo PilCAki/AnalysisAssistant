@@ -22,6 +22,7 @@ if str(parent_dir) not in sys.path:
 from agent_core.engine import LLMInterface
 from agent_core.persistence import PersistenceManager
 from agent_core.project_init import create_project_structure, sanitize_project_name, create_initial_files
+from agent_core.dataset_analyzer import DatasetAnalyzer
 
 
 @dataclass
@@ -31,6 +32,7 @@ class AppState:
     """
     current_project: Optional[str] = None
     uploaded_data: Optional[pd.DataFrame] = None
+    dataset_analysis: Optional[Dict[str, Any]] = None
     conversation_history: List[Dict[str, Any]] = field(default_factory=list)
     analysis_results: List[Dict[str, Any]] = field(default_factory=list)
     active_scripts: Dict[str, str] = field(default_factory=dict)
@@ -51,6 +53,7 @@ class StateManager:
         # Initialize backend components
         self.persistence = PersistenceManager()
         self.llm_interface = None  # Will be initialized when project is selected
+        self.dataset_analyzer = DatasetAnalyzer()
         
         # Ensure projects directory exists
         self.state.projects_directory.mkdir(exist_ok=True)
@@ -65,6 +68,8 @@ class StateManager:
             st.session_state.current_project = None
         if 'uploaded_data' not in st.session_state:
             st.session_state.uploaded_data = None
+        if 'dataset_analysis' not in st.session_state:
+            st.session_state.dataset_analysis = None
     
     def list_projects(self) -> List[str]:
         """
@@ -150,17 +155,23 @@ class StateManager:
                 except Exception:
                     continue
     
-    def upload_data(self, file_data, filename: str):
+    def upload_data(self, file_data, filename: str) -> Dict[str, Any]:
         """
-        Handle data upload and save to current project.
+        Handle data upload with comprehensive analysis and error handling.
         
         Args:
             file_data: File data from Streamlit uploader
             filename: Name of the uploaded file
+            
+        Returns:
+            Dictionary with success status, message, and analysis results
         """
         if not self.state.current_project:
-            st.error("Please select or create a project first")
-            return
+            return {
+                "success": False,
+                "message": "Please select or create a project first",
+                "analysis": None
+            }
         
         project_path = self.state.projects_directory / self.state.current_project
         data_dir = project_path / "data"
@@ -168,17 +179,112 @@ class StateManager:
         
         # Save file to project
         file_path = data_dir / filename
-        with open(file_path, "wb") as f:
-            f.write(file_data.getvalue())
         
-        # Update session state
-        if filename.endswith('.csv'):
-            df = pd.read_csv(file_path)
-        else:
-            df = pd.read_excel(file_path)
+        try:
+            with open(file_path, "wb") as f:
+                f.write(file_data.getvalue())
             
-        self.state.uploaded_data = df
-        st.session_state.uploaded_data = df
+            # Load the dataset with appropriate parser and error handling
+            df = self._load_dataset_with_error_handling(file_path, filename)
+            
+            if df is None:
+                return {
+                    "success": False,
+                    "message": "Failed to load dataset. Please check file format and encoding.",
+                    "analysis": None
+                }
+            
+            # Perform comprehensive analysis
+            analysis = self.dataset_analyzer.analyze_dataset(df, filename)
+            
+            # Save metadata to project
+            metadata_saved = self.dataset_analyzer.save_metadata(analysis, project_path)
+            
+            # Update session state
+            self.state.uploaded_data = df
+            self.state.dataset_analysis = analysis
+            st.session_state.uploaded_data = df
+            st.session_state.dataset_analysis = analysis
+            
+            return {
+                "success": True,
+                "message": f"Successfully loaded {filename}",
+                "analysis": analysis,
+                "metadata_saved": metadata_saved
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error processing file: {str(e)}",
+                "analysis": None
+            }
+    
+    def _load_dataset_with_error_handling(self, file_path: Path, filename: str) -> Optional[pd.DataFrame]:
+        """
+        Load dataset with comprehensive error handling and encoding detection.
+        
+        Args:
+            file_path: Path to the dataset file
+            filename: Original filename for format detection
+            
+        Returns:
+            Loaded DataFrame or None if loading failed
+        """
+        file_ext = filename.lower().split('.')[-1]
+        
+        try:
+            if file_ext == 'csv':
+                return self._load_csv_with_fallback(file_path)
+            elif file_ext == 'tsv':
+                return self._load_tsv_with_fallback(file_path)
+            elif file_ext in ['xlsx', 'xls']:
+                return pd.read_excel(file_path)
+            else:
+                st.error(f"Unsupported file format: {file_ext}")
+                return None
+                
+        except Exception as e:
+            st.error(f"Error loading file: {str(e)}")
+            return None
+    
+    def _load_csv_with_fallback(self, file_path: Path) -> Optional[pd.DataFrame]:
+        """Load CSV with encoding fallback."""
+        encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+        
+        for encoding in encodings:
+            try:
+                df = pd.read_csv(file_path, encoding=encoding)
+                if encoding != 'utf-8':
+                    st.warning(f"File loaded with {encoding} encoding instead of UTF-8")
+                return df
+            except UnicodeDecodeError:
+                continue
+            except Exception as e:
+                st.error(f"Error reading CSV: {str(e)}")
+                break
+        
+        st.error("Could not read CSV file with any supported encoding")
+        return None
+    
+    def _load_tsv_with_fallback(self, file_path: Path) -> Optional[pd.DataFrame]:
+        """Load TSV with encoding fallback."""
+        encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+        
+        for encoding in encodings:
+            try:
+                df = pd.read_csv(file_path, sep='\t', encoding=encoding)
+                if encoding != 'utf-8':
+                    st.warning(f"File loaded with {encoding} encoding instead of UTF-8")
+                return df
+            except UnicodeDecodeError:
+                continue
+            except Exception as e:
+                st.error(f"Error reading TSV: {str(e)}")
+                break
+        
+        st.error("Could not read TSV file with any supported encoding")
+        return None
     
     def process_user_message(self, message: str) -> Dict[str, Any]:
         """
@@ -310,10 +416,26 @@ class UIBackendBridge:
         self.state_manager = state_manager
     
     def handle_file_upload(self, uploaded_file):
-        """Handle file upload from UI."""
+        """Handle file upload from UI with enhanced feedback."""
         if uploaded_file is not None:
-            self.state_manager.upload_data(uploaded_file, uploaded_file.name)
-            return True
+            result = self.state_manager.upload_data(uploaded_file, uploaded_file.name)
+            
+            if result["success"]:
+                st.success(result["message"])
+                
+                # Display comprehensive analysis if available
+                if result["analysis"]:
+                    from ui.components import DataComponents
+                    DataComponents.comprehensive_dataset_preview(result["analysis"])
+                    
+                    # Show metadata saved status
+                    if result.get("metadata_saved", False):
+                        st.info("📄 Dataset metadata saved to dataset_summary.json")
+                        
+                return True
+            else:
+                st.error(result["message"])
+                return False
         return False
     
     def handle_chat_message(self, message: str) -> Dict[str, Any]:

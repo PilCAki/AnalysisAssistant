@@ -81,15 +81,12 @@ def handle_file_upload():
     
     uploaded_file = st.file_uploader(
         "Upload your dataset",
-        type=['csv', 'xlsx', 'xls'],
-        help="Upload a CSV or Excel file to begin analysis"
+        type=['csv', 'tsv', 'xlsx', 'xls'],
+        help="Upload a CSV, TSV, or Excel file to begin analysis"
     )
     
     if uploaded_file is not None:
-        if ui_bridge.handle_file_upload(uploaded_file):
-            st.success(f"✅ Loaded {uploaded_file.name}")
-        else:
-            st.error("Please select a project first")
+        ui_bridge.handle_file_upload(uploaded_file)
 
 
 def display_chat_history():
@@ -167,12 +164,6 @@ def main():
         
         # File upload
         handle_file_upload()
-        
-        # Data preview if data is loaded
-        if st.session_state.get('uploaded_data') is not None:
-            st.divider()
-            with st.expander("📊 Data Preview", expanded=False):
-                DataComponents.data_preview(st.session_state.uploaded_data)
         
         st.divider()
         
