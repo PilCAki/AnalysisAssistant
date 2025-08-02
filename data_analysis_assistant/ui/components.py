@@ -109,6 +109,74 @@ class DataComponents:
             st.info(f"Showing first {display_rows} of {len(df)} rows")
     
     @staticmethod
+    def comprehensive_dataset_preview(analysis: Dict[str, Any]):
+        """
+        Display comprehensive dataset analysis in an expandable section.
+        
+        Args:
+            analysis: Dataset analysis results from DatasetAnalyzer
+        """
+        with st.expander("📊 Dataset Analysis & Preview", expanded=True):
+            # Overview metrics
+            shape = analysis['shape']
+            overall = analysis['overall_stats']
+            quality = analysis['data_quality']
+            
+            st.markdown(f"**Dataset:** {analysis['filename']}")
+            st.markdown(f"**Shape:** {shape['rows']:,} rows × {shape['columns']} columns")
+            
+            # Key metrics in columns
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Memory Usage", f"{analysis['memory_usage_mb']:.1f} MB")
+            with col2:
+                st.metric("Missing Values", f"{overall['total_missing_values']:,}")
+            with col3:
+                st.metric("Duplicate Rows", f"{overall['duplicate_rows']:,}")
+            with col4:
+                st.metric("Quality Score", f"{quality['quality_score']:.0f}/100")
+            
+            # Column Summary Table
+            st.subheader("Column Summary")
+            column_data = []
+            for col_info in analysis['column_summary']:
+                notes = col_info.get('notes', [])
+                notes_str = "; ".join(notes) if notes else "-"
+                
+                row = {
+                    "Column": col_info['name'],
+                    "Type": col_info['dtype'],
+                    "Nulls": col_info['null_count'],
+                    "Unique": col_info['unique_count'],
+                    "Notes": notes_str[:50] + "..." if len(notes_str) > 50 else notes_str
+                }
+                column_data.append(row)
+            
+            column_df = pd.DataFrame(column_data)
+            st.dataframe(column_df, use_container_width=True, hide_index=True)
+            
+            # Data Quality Issues
+            if quality['issues']:
+                st.subheader("⚠️ Data Quality Issues")
+                for issue in quality['issues']:
+                    st.warning(issue)
+            
+            # Recommendations
+            if quality['recommendations']:
+                st.subheader("💡 Recommendations")
+                for rec in quality['recommendations']:
+                    st.info(rec)
+            
+            # Data Preview (first few rows)
+            st.subheader("Data Preview (First 5 Rows)")
+            preview_data = analysis['preview_data']
+            preview_df = pd.DataFrame(preview_data['head'])
+            if not preview_df.empty:
+                st.dataframe(preview_df, use_container_width=True)
+            else:
+                st.info("No data to preview")
+    
+    @staticmethod
     def column_selector(df: pd.DataFrame, 
                        multiselect: bool = False) -> List[str]:
         """
