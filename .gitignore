@@ -187,6 +187,9 @@ projects/*/history/*
 projects/*/*.jsonl
 projects/*/llm_log_*.jsonl
 
+# Code execution history (should not be committed)
+history/
+
 # Test projects (exclude from version control)
 projects/my_first_analysis_project/
 projects/sales_analysis/
