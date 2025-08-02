@@ -187,9 +187,17 @@ class LLMInterface:
                 # Log the interaction
                 if self.project_name:
                     try:
+                        # Create simplified log entry in the format specified in the issue
+                        simplified_log_entry = {
+                            "user_prompt": messages[-1]["content"] if messages else "",
+                            "llm_raw_response": completion.choices[0].message.content or "",
+                            "llm_plan": parsed_response.explanation if parsed_response else "",
+                            "llm_code": parsed_response.code if parsed_response else ""
+                        }
+                        
                         self.persistence.log_llm_interaction(
                             self.project_name, 
-                            log_entry.model_dump()
+                            simplified_log_entry
                         )
                     except Exception as e:
                         # Don't fail the LLM call if logging fails
@@ -222,9 +230,17 @@ class LLMInterface:
         
         if self.project_name:
             try:
+                # Create simplified log entry for error case
+                simplified_log_entry = {
+                    "user_prompt": messages[-1]["content"] if messages else "",
+                    "llm_raw_response": f"Error: {last_exception}",
+                    "llm_plan": "",
+                    "llm_code": ""
+                }
+                
                 self.persistence.log_llm_interaction(
                     self.project_name, 
-                    log_entry.model_dump()
+                    simplified_log_entry
                 )
             except Exception:
                 pass  # Don't fail on logging error
