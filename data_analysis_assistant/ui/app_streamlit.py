@@ -7,22 +7,138 @@ Run with: streamlit run data_analysis_assistant/ui/app_streamlit.py
 
 import streamlit as st
 import pandas as pd
+from pathlib import Path
 from typing import Optional
+import sys
+import os
 
-# TODO: Import agent_core modules once implemented
-# from ..agent_core.engine import AnalysisEngine
-# from ..agent_core.conversation import ConversationManager
-# from ..agent_core.persistence import PersistenceManager
+# Add the parent directory to sys.path to allow imports
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+if str(parent_dir) not in sys.path:
+    sys.path.insert(0, str(parent_dir))
+
+from ui.state import StateManager, UIBackendBridge
+from ui.components import (
+    ChatComponents, DataComponents, ProjectComponents, SettingsComponents
+)
 
 
 def initialize_session_state():
     """Initialize Streamlit session state variables."""
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
-    if 'current_project' not in st.session_state:
-        st.session_state.current_project = None
-    if 'uploaded_data' not in st.session_state:
-        st.session_state.uploaded_data = None
+    if 'state_manager' not in st.session_state:
+        # Get the absolute path to projects directory
+        projects_dir = Path(__file__).parent.parent.parent / "projects"
+        st.session_state.state_manager = StateManager(projects_dir)
+        st.session_state.ui_bridge = UIBackendBridge(st.session_state.state_manager)
+    
+    st.session_state.state_manager.initialize_session()
+
+
+def handle_project_management():
+    """Handle project selection and creation."""
+    state_manager = st.session_state.state_manager
+    ui_bridge = st.session_state.ui_bridge
+    
+    # Get list of available projects
+    projects = ui_bridge.handle_project_operation("list")
+    
+    # Project selector component
+    project_action = ProjectComponents.project_selector(
+        projects, 
+        st.session_state.get('current_project')
+    )
+    
+    if project_action:
+        if project_action.startswith("CREATE:"):
+            # Create new project
+            project_name = project_action.split(":", 1)[1]
+            success = ui_bridge.handle_project_operation("create", name=project_name)
+            if success:
+                st.success(f"Created project: {project_name}")
+                # Select the newly created project
+                ui_bridge.handle_project_operation("select", name=project_name)
+                st.rerun()
+            else:
+                st.error("Failed to create project or project already exists")
+        else:
+            # Select existing project
+            ui_bridge.handle_project_operation("select", name=project_action)
+            st.success(f"Selected project: {project_action}")
+            st.rerun()
+    
+    # Display current project info
+    ProjectComponents.project_info_display(
+        st.session_state.get('current_project')
+    )
+
+
+def handle_file_upload():
+    """Handle file upload functionality."""
+    ui_bridge = st.session_state.ui_bridge
+    
+    st.subheader("📤 Dataset Upload")
+    
+    uploaded_file = st.file_uploader(
+        "Upload your dataset",
+        type=['csv', 'xlsx', 'xls'],
+        help="Upload a CSV or Excel file to begin analysis"
+    )
+    
+    if uploaded_file is not None:
+        if ui_bridge.handle_file_upload(uploaded_file):
+            st.success(f"✅ Loaded {uploaded_file.name}")
+        else:
+            st.error("Please select a project first")
+
+
+def display_chat_history():
+    """Display the chat conversation history."""
+    chat_container = st.container()
+    
+    with chat_container:
+        for message in st.session_state.messages:
+            ChatComponents.display_message(
+                role=message["role"],
+                content=message["content"],
+                code=message.get("code"),
+                result=message.get("result")
+            )
+
+
+def handle_chat_input():
+    """Handle new chat messages from user."""
+    ui_bridge = st.session_state.ui_bridge
+    
+    # Chat input
+    if prompt := st.chat_input("Ask me anything about your data..."):
+        # Add user message to chat
+        user_message = {"role": "user", "content": prompt}
+        st.session_state.messages.append(user_message)
+        
+        # Display user message immediately
+        ChatComponents.display_message(
+            role="user",
+            content=prompt
+        )
+        
+        # Get assistant response
+        with st.spinner("Thinking..."):
+            response = ui_bridge.handle_chat_message(prompt)
+        
+        # Add assistant response to chat
+        st.session_state.messages.append(response)
+        
+        # Display assistant response
+        ChatComponents.display_message(
+            role=response["role"],
+            content=response["content"],
+            code=response.get("code"),
+            result=response.get("result")
+        )
+        
+        # Rerun to update the display
+        st.rerun()
 
 
 def main():
@@ -40,113 +156,57 @@ def main():
     st.title("🧠 AnalysisAssistant")
     st.subheader("Your AI-powered data analysis companion")
     
-    # Sidebar for file upload and project management
+    # Sidebar for project management and file upload
     with st.sidebar:
-        st.header("📁 Project & Data")
+        st.header("🎯 Project & Data Management")
+        
+        # Project management
+        handle_project_management()
+        
+        st.divider()
         
         # File upload
-        uploaded_file = st.file_uploader(
-            "Upload your dataset",
-            type=['csv', 'xlsx', 'xls'],
-            help="Upload a CSV or Excel file to begin analysis"
-        )
+        handle_file_upload()
         
-        if uploaded_file is not None:
-            try:
-                # Load data based on file type
-                if uploaded_file.name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file)
-                else:
-                    df = pd.read_excel(uploaded_file)
-                
-                st.session_state.uploaded_data = df
-                st.success(f"✅ Loaded {uploaded_file.name}")
-                
-                # Show basic info
-                st.write("**Dataset Info:**")
-                st.write(f"- Shape: {df.shape}")
-                st.write(f"- Columns: {len(df.columns)}")
-                
-                # Show preview
-                with st.expander("📊 Data Preview"):
-                    st.dataframe(df.head())
-                    
-            except Exception as e:
-                st.error(f"Error loading file: {str(e)}")
+        # Data preview if data is loaded
+        if st.session_state.get('uploaded_data') is not None:
+            st.divider()
+            with st.expander("📊 Data Preview", expanded=False):
+                DataComponents.data_preview(st.session_state.uploaded_data)
         
-        # Project selection (placeholder)
-        st.header("🗂️ Projects")
-        project_name = st.text_input("Project Name", placeholder="my_analysis")
-        if st.button("Create/Load Project"):
-            if project_name:
-                st.session_state.current_project = project_name
-                st.success(f"Project: {project_name}")
+        st.divider()
+        
+        # Settings
+        SettingsComponents.model_settings()
+        SettingsComponents.analysis_preferences()
+        
+        # Clear chat button
+        if st.button("🗑️ Clear Chat", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
     
     # Main chat interface
     st.header("💬 Analysis Chat")
     
-    # Display chat messages
-    chat_container = st.container()
-    with chat_container:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
-                
-                # Display code if present
-                if "code" in message:
-                    st.code(message["code"], language="python")
-                
-                # Display results if present
-                if "result" in message:
-                    st.write(message["result"])
+    # Display chat history
+    display_chat_history()
     
-    # Chat input
-    if prompt := st.chat_input("Ask me anything about your data..."):
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Display user message
-        with st.chat_message("user"):
-            st.write(prompt)
-        
-        # Generate assistant response (placeholder)
-        with st.chat_message("assistant"):
-            if st.session_state.uploaded_data is None:
-                response = "👋 Hello! Please upload a dataset first so I can help you analyze it."
-            else:
-                response = f"""I'd be happy to help you analyze your data! 
-                
-Your dataset has {st.session_state.uploaded_data.shape[0]} rows and {st.session_state.uploaded_data.shape[1]} columns.
-
-*Note: This is a placeholder response. The full LLM integration will be implemented in future iterations.*
-
-Here's what I can help you with:
-- Data exploration and profiling
-- Creating visualizations
-- Statistical analysis
-- Machine learning models
-- Data cleaning and preprocessing
-
-Please describe what specific analysis you'd like me to perform!"""
-            
-            st.write(response)
-            
-            # Add assistant message to session
-            st.session_state.messages.append({"role": "assistant", "content": response})
+    # Handle new chat input
+    handle_chat_input()
     
-    # Instructions
+    # Instructions for new users
     if not st.session_state.messages:
         st.info("""
         **Getting Started:**
-        1. Upload your dataset using the sidebar
-        2. Create or select a project
-        3. Start chatting about what you want to analyze!
+        1. 📁 Create or select a project in the sidebar
+        2. 📤 Upload your dataset (CSV or Excel file)
+        3. 💬 Start chatting about what you want to analyze!
         
         **Example questions:**
         - "Show me a summary of this dataset"
         - "Create a plot showing the relationship between X and Y"
         - "Find correlations in the data"
-        - "Build a prediction model for column Z"
+        - "What insights can you find in this data?"
         """)
 
 

@@ -19,31 +19,57 @@ class ChatComponents:
                        result: Any = None, plot: plt.Figure = None):
         """
         Display a chat message with optional code and results.
-        
-        TODO: Implement enhanced message display
-        TODO: Add syntax highlighting for code
-        TODO: Add result formatting
         """
-        pass
+        with st.chat_message(role):
+            st.write(content)
+            
+            # Display code if present
+            if code:
+                st.subheader("Generated Code:")
+                st.code(code, language="python")
+            
+            # Display results if present
+            if result:
+                st.subheader("Results:")
+                if isinstance(result, pd.DataFrame):
+                    st.dataframe(result)
+                elif isinstance(result, dict):
+                    st.json(result)
+                else:
+                    st.write(result)
+            
+            # Display plot if present
+            if plot:
+                st.pyplot(plot)
     
     @staticmethod
     def code_viewer(code: str, language: str = "python", 
                    editable: bool = False) -> str:
         """
         Display code with syntax highlighting and optional editing.
-        
-        TODO: Implement code viewer component
         """
-        pass
+        if editable:
+            return st.text_area("Edit Code:", value=code, height=200)
+        else:
+            st.code(code, language=language)
+            return code
     
     @staticmethod
     def result_viewer(result: Any, result_type: str = "auto"):
         """
         Display analysis results in appropriate format.
-        
-        TODO: Implement result display logic
         """
-        pass
+        if result is None:
+            return
+            
+        if isinstance(result, pd.DataFrame):
+            st.dataframe(result, use_container_width=True)
+        elif isinstance(result, dict):
+            st.json(result)
+        elif isinstance(result, str) and len(result) > 100:
+            st.text_area("Result:", value=result, height=150, disabled=True)
+        else:
+            st.write(result)
 
 
 class DataComponents:
@@ -52,92 +78,147 @@ class DataComponents:
     @staticmethod
     def data_preview(df: pd.DataFrame, max_rows: int = 100):
         """
-        Display interactive data preview with filtering.
-        
-        TODO: Implement enhanced data preview
+        Display interactive data preview with basic information.
         """
-        pass
+        if df is None:
+            st.info("No data uploaded yet.")
+            return
+            
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Rows", df.shape[0])
+            st.metric("Columns", df.shape[1])
+        
+        with col2:
+            st.metric("Memory Usage", f"{df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+            missing_values = df.isnull().sum().sum()
+            st.metric("Missing Values", missing_values)
+        
+        # Data types summary
+        st.subheader("Data Types")
+        dtype_counts = df.dtypes.value_counts()
+        st.bar_chart(dtype_counts)
+        
+        # Data preview
+        st.subheader("Data Preview")
+        display_rows = min(max_rows, len(df))
+        st.dataframe(df.head(display_rows), use_container_width=True)
+        
+        if len(df) > display_rows:
+            st.info(f"Showing first {display_rows} of {len(df)} rows")
     
     @staticmethod
     def column_selector(df: pd.DataFrame, 
                        multiselect: bool = False) -> List[str]:
         """
         Create column selection interface.
-        
-        TODO: Implement column selector
         """
-        pass
+        if df is None:
+            return []
+            
+        columns = df.columns.tolist()
+        
+        if multiselect:
+            return st.multiselect("Select columns:", columns)
+        else:
+            selected = st.selectbox("Select column:", columns)
+            return [selected] if selected else []
     
     @staticmethod
     def data_info_panel(df: pd.DataFrame):
         """
         Display comprehensive data information panel.
-        
-        TODO: Implement data info display
         """
-        pass
-
-
-class PlotComponents:
-    """Components for plot display and interaction."""
-    
-    @staticmethod
-    def plot_viewer(fig: plt.Figure, title: str = None):
-        """
-        Display matplotlib/seaborn plots with controls.
-        
-        TODO: Implement plot viewer
-        """
-        pass
-    
-    @staticmethod
-    def plotly_viewer(fig, title: str = None):
-        """
-        Display interactive plotly figures.
-        
-        TODO: Implement plotly viewer
-        """
-        pass
-    
-    @staticmethod
-    def plot_gallery(plots: List[Dict[str, Any]]):
-        """
-        Display gallery of multiple plots.
-        
-        TODO: Implement plot gallery
-        """
-        pass
+        if df is None:
+            st.info("No data loaded")
+            return
+            
+        with st.expander("📊 Dataset Information", expanded=False):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Shape", f"{df.shape[0]} × {df.shape[1]}")
+                st.metric("Memory", f"{df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+            
+            with col2:
+                numeric_cols = df.select_dtypes(include=['number']).shape[1]
+                categorical_cols = df.select_dtypes(include=['object']).shape[1]
+                st.metric("Numeric Columns", numeric_cols)
+                st.metric("Text Columns", categorical_cols)
+            
+            with col3:
+                missing_count = df.isnull().sum().sum()
+                duplicate_count = df.duplicated().sum()
+                st.metric("Missing Values", missing_count)
+                st.metric("Duplicate Rows", duplicate_count)
+            
+            # Column details
+            st.subheader("Column Details")
+            col_info = []
+            for col in df.columns:
+                col_info.append({
+                    "Column": col,
+                    "Type": str(df[col].dtype),
+                    "Non-Null": df[col].count(),
+                    "Missing": df[col].isnull().sum(),
+                    "Unique": df[col].nunique()
+                })
+            
+            info_df = pd.DataFrame(col_info)
+            st.dataframe(info_df, use_container_width=True)
 
 
 class ProjectComponents:
     """Components for project management."""
     
     @staticmethod
-    def project_selector(projects: List[str]) -> Optional[str]:
+    def project_selector(projects: List[str], current_project: Optional[str] = None) -> Optional[str]:
         """
         Create project selection interface.
-        
-        TODO: Implement project selector
         """
-        pass
+        st.subheader("🗂️ Project Management")
+        
+        # Project selection
+        if projects:
+            current_index = 0
+            if current_project and current_project in projects:
+                current_index = projects.index(current_project)
+            
+            selected_project = st.selectbox(
+                "Select Project:",
+                options=[""] + projects,
+                index=current_index + 1 if current_project else 0
+            )
+            
+            if selected_project and selected_project != current_project:
+                return selected_project
+        else:
+            st.info("No projects found. Create a new project below.")
+        
+        # New project creation
+        st.subheader("Create New Project")
+        new_project_name = st.text_input(
+            "Project Name:",
+            placeholder="my_analysis_project"
+        )
+        
+        if st.button("Create Project", disabled=not new_project_name):
+            return f"CREATE:{new_project_name}"
+        
+        return None
     
     @staticmethod
-    def file_manager(project_path: str):
+    def project_info_display(project_name: Optional[str], project_path: Optional[str] = None):
         """
-        Display project file manager interface.
-        
-        TODO: Implement file manager
+        Display current project information.
         """
-        pass
-    
-    @staticmethod
-    def script_history(scripts: List[Dict[str, Any]]):
-        """
-        Display analysis script history.
-        
-        TODO: Implement script history viewer
-        """
-        pass
+        if project_name:
+            st.success(f"📁 Current Project: **{project_name}**")
+            if project_path:
+                st.caption(f"Location: {project_path}")
+        else:
+            st.info("👆 Please select or create a project to get started")
 
 
 class SettingsComponents:
@@ -147,16 +228,22 @@ class SettingsComponents:
     def model_settings():
         """
         Interface for LLM model settings.
-        
-        TODO: Implement model settings
         """
-        pass
+        with st.expander("🔧 LLM Settings"):
+            st.info("LLM configuration will be available in future updates.")
+            
+            # Placeholder for future settings
+            st.text_input("OpenAI API Key", type="password", disabled=True)
+            st.selectbox("Model", ["gpt-4", "gpt-3.5-turbo"], disabled=True)
+            st.slider("Temperature", 0.0, 1.0, 0.7, disabled=True)
     
     @staticmethod
     def analysis_preferences():
         """
         Interface for analysis preferences.
-        
-        TODO: Implement preference settings
         """
-        pass
+        with st.expander("⚙️ Analysis Preferences"):
+            st.checkbox("Auto-execute generated code", value=False)
+            st.checkbox("Show code by default", value=True)
+            st.selectbox("Plot style", ["default", "seaborn", "ggplot"])
+            st.number_input("Max rows to display", min_value=10, max_value=1000, value=100)
